@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>FocusFlow</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <div id="authPage" class="auth-page">
+
+        <div class="auth-container">
+
+            <div class="brand">
+                <div class="brand-icon">✓</div>
+
+                <h1>FocusFlow</h1>
+
+                <p>Plan less. Finish more.</p>
+            </div>
+
+            <div class="auth-card">
+
+                <div class="auth-tabs">
+
+                    <button id="signinTab" class="auth-tab active">
+                        Sign In
+                    </button>
+
+                    <button id="signupTab" class="auth-tab">
+                        Sign Up
+                    </button>
+
+                </div>
+
+                <form id="authForm">
+
+                    <div id="nameBox" class="form-group hidden">
+
+                        <label>Name</label>
+
+                        <input
+                            id="name"
+                            type="text"
+                            placeholder="Your name"
+                        >
+
+                    </div>
+
+                    <div class="form-group">
+
+                        <label>Email</label>
+
+                        <input
+                            id="email"
+                            type="email"
+                            placeholder="you@example.com"
+                            required
+                        >
+
+                    </div>
+
+                    <div class="form-group">
+
+                        <label>Password</label>
+
+                        <input
+                            id="password"
+                            type="password"
+                            placeholder="••••••••"
+                            required
+                        >
+
+                    </div>
+
+                    <p id="authMessage" class="message"></p>
+
+                    <button id="authButton" class="primary-btn">
+                        Sign In
+                    </button>
+
+                </form>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <div id="appPage" class="hidden">
+
+        <header class="navbar">
+
+            <div class="nav-content">
+
+                <div class="nav-brand">
+
+                    <div class="small-icon">✓</div>
+
+                    <div>
+                        <h1>FocusFlow</h1>
+                        <p id="welcome"></p>
+                    </div>
+
+                </div>
+
+                <button id="logoutBtn" class="logout-btn">
+                    Logout
+                </button>
+
+            </div>
+
+        </header>
+
+
+        <main class="main-container">
+
+            <div class="dashboard">
+
+                <div class="focus-card">
+
+                    <p>Today's focus</p>
+
+                    <h2>Keep the streak alive 🔥</h2>
+
+                    <span>
+                        Complete every task due today.
+                    </span>
+
+                </div>
+
+
+                <div class="streak-card">
+
+                    <p>Current streak</p>
+
+                    <div class="streak-number">
+
+                        <span id="streak">0</span>
+
+                        <span>🔥</span>
+
+                    </div>
+
+                    <span>days completed</span>
+
+                </div>
+
+            </div>
+
+
+            <div class="content-grid">
+
+
+                <section>
+
+                    <div class="task-form-card">
+
+                        <h2>Add task</h2>
+
+                        <p class="subtitle">
+                            Create your next goal.
+                        </p>
+
+
+                        <form id="taskForm">
+
+                            <div class="form-group">
+
+                                <label>Task</label>
+
+                                <input
+                                    id="taskTitle"
+                                    required
+                                    placeholder="e.g. Solve 3 DSA problems"
+                                >
+
+                            </div>
+
+
+                            <div class="form-group">
+
+                                <label>Due date</label>
+
+                                <input
+                                    id="dueDate"
+                                    type="date"
+                                    required
+                                >
+
+                            </div>
+
+
+                            <div class="form-group">
+
+                                <label>Repeat</label>
+
+                                <select id="repeat">
+
+                                    <option value="none">
+                                        Does not repeat
+                                    </option>
+
+                                    <option value="daily">
+                                        Daily
+                                    </option>
+
+                                    <option value="weekly">
+                                        Weekly
+                                    </option>
+
+                                    <option value="biweekly">
+                                        Every 2 weeks
+                                    </option>
+
+                                    <option value="monthly">
+                                        Monthly
+                                    </option>
+
+                                </select>
+
+                            </div>
+
+
+                            <button class="primary-btn">
+                                + Add Task
+                            </button>
+
+                        </form>
+
+                    </div>
+
+                </section>
+
+
+                <section>
+
+                    <div class="tasks-header">
+
+                        <div>
+
+                            <h2>Your tasks</h2>
+
+                            <p id="taskCount"></p>
+
+                        </div>
+
+
+                        <div class="filters">
+
+                            <button
+                                class="filter-btn active"
+                                data-filter="all"
+                                onclick="changeFilter('all')"
+                            >
+                                All
+                            </button>
+
+                            <button
+                                class="filter-btn"
+                                data-filter="pending"
+                                onclick="changeFilter('pending')"
+                            >
+                                Pending
+                            </button>
+
+                            <button
+                                class="filter-btn"
+                                data-filter="completed"
+                                onclick="changeFilter('completed')"
+                            >
+                                Completed
+                            </button>
+
+                        </div>
+
+                    </div>
+
+
+                    <div id="taskList" class="task-list"></div>
+
+
+                    <div id="emptyState" class="empty-state hidden">
+
+                        <div>✨</div>
+
+                        <h3>No tasks here</h3>
+
+                        <p>
+                            Add a task and start your streak.
+                        </p>
+
+                    </div>
+
+                </section>
+
+            </div>
+
+        </main>
+
+    </div>
+
+
+    <script src="app.js"></script>
+
+</body>
+</html>
