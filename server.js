@@ -1,162 +1,136 @@
 const express = require("express");
-const fs = require("fs");
-const path = require("path");
 const bcrypt = require("bcryptjs");
 const session = require("express-session");
+const MongoStore = require("connect-mongo").default;
+const mongoose = require("mongoose");
+const dotenv = require("dotenv");
+const path = require("path");
+
+const User = require("./models/User");
+const Task = require("./models/Task");
+
+const {
+    dateKey,
+    nextDate,
+    getStreak
+} = require("./utils/taskUtils");
+
+dotenv.config();
 
 const app = express();
-const PORT = 3000;
 
-const dataDir = path.join(__dirname, "data");
-const usersFile = path.join(dataDir, "users.json");
-const tasksFile = path.join(dataDir, "tasks.json");
+const PORT = process.env.PORT || 3001;
+const MONGODB_URI = process.env.MONGODB_URI;
+const SESSION_SECRET = process.env.SESSION_SECRET;
 
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir);
+if (!MONGODB_URI) {
+    console.error("MONGODB_URI is missing from .env");
+    process.exit(1);
+}
 
-if (!fs.existsSync(usersFile)) fs.writeFileSync(usersFile, "[]");
-if (!fs.existsSync(tasksFile)) fs.writeFileSync(tasksFile, "[]");
+if (!SESSION_SECRET) {
+    console.error("SESSION_SECRET is missing from .env");
+    process.exit(1);
+}
 
+// Middleware
 app.use(express.json());
+
 app.use(express.static(path.join(__dirname, "public")));
 
-app.use(session({
-    secret: "todo-student-project-secret",
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-        maxAge: 1000 * 60 * 60 * 24 * 7
-    }
-}));
 
-function read(file) {
-    return JSON.parse(fs.readFileSync(file, "utf8"));
-}
+// MongoDB connection
+mongoose
+    .connect(MONGODB_URI)
+    .then(() => {
+        console.log("MongoDB connected successfully");
+    })
+    .catch((error) => {
+        console.error("MongoDB connection failed:", error.message);
+        process.exit(1);
+    });
 
-function write(file, data) {
-    fs.writeFileSync(file, JSON.stringify(data, null, 2));
-}
 
+// Session configuration
+app.use(
+    session({
+        secret: SESSION_SECRET,
+        resave: false,
+        saveUninitialized: false,
+
+        store: MongoStore.create({
+            mongoUrl: MONGODB_URI
+        }),
+
+        cookie: {
+            maxAge: 1000 * 60 * 60 * 24 * 7,
+            httpOnly: true,
+            sameSite: "lax"
+        }
+    })
+);
+
+
+// Authentication middleware
 function auth(req, res, next) {
     if (!req.session.userId) {
-        return res.status(401).json({ message: "Please sign in" });
+        return res.status(401).json({
+            message: "Please sign in"
+        });
     }
+
     next();
 }
 
-function dateKey(date = new Date()) {
-    const d = new Date(date);
-    return d.toISOString().slice(0, 10);
-}
 
-function addDays(dateString, days) {
-    const d = new Date(dateString + "T00:00:00");
-    d.setDate(d.getDate() + days);
-    return dateKey(d);
-}
-
-function nextDate(dateString, repeat) {
-    if (repeat === "daily") return addDays(dateString, 1);
-    if (repeat === "weekly") return addDays(dateString, 7);
-    if (repeat === "biweekly") return addDays(dateString, 14);
-
-    if (repeat === "monthly") {
-        const d = new Date(dateString + "T00:00:00");
-        const day = d.getDate();
-        d.setMonth(d.getMonth() + 1);
-
-        if (d.getDate() !== day) d.setDate(0);
-
-        return dateKey(d);
-    }
-
-    return null;
-}
-
-function isDueOn(task, day) {
-    const target = new Date(day + "T00:00:00");
-    const start = new Date(task.startDate + "T00:00:00");
-
-    if (target < start) return false;
-
-    if (task.repeat === "none") {
-        return task.startDate === day;
-    }
-
-    if (task.repeat === "daily") return true;
-
-    const diff = Math.floor((target - start) / 86400000);
-
-    if (task.repeat === "weekly") return diff % 7 === 0;
-    if (task.repeat === "biweekly") return diff % 14 === 0;
-
-    if (task.repeat === "monthly") {
-        return target.getDate() === start.getDate() ||
-            (target.getMonth() !== start.getMonth() && target.getDate() === new Date(
-                target.getFullYear(),
-                target.getMonth() + 1,
-                0
-            ).getDate() && start.getDate() > target.getDate());
-    }
-
-    return false;
-}
-
-function completedOn(task, day) {
-    return task.completions && task.completions.includes(day);
-}
-
-function getStreak(tasks) {
-    const today = dateKey();
-    let streak = 0;
-    let current = today;
-
-    for (let i = 0; i < 1000; i++) {
-        const dueTasks = tasks.filter(task => isDueOn(task, current));
-
-        if (dueTasks.length === 0) break;
-
-        const allDone = dueTasks.every(task => completedOn(task, current));
-
-        if (!allDone) break;
-
-        streak++;
-        current = addDays(current, -1);
-    }
-
-    return streak;
-}
-
+// SIGN UP
 app.post("/api/signup", async (req, res) => {
-    const { name, email, password } = req.body;
+    try {
+        const { name, email, password } = req.body;
 
-    if (!name || !email || !password) {
-        return res.status(400).json({ message: "All fields are required" });
+        if (!name || !email || !password) {
+            return res.status(400).json({
+                message: "All fields are required"
+            });
+        }
+
+        if (password.length < 6) {
+            return res.status(400).json({
+                message: "Password must be at least 6 characters"
+            });
+        }
+
+        const cleanEmail = email.toLowerCase().trim();
+
+        const exists = await User.findOne({
+            email: cleanEmail
+        });
+
+        if (exists) {
+            return res.status(400).json({
+                message: "Email already registered"
+            });
+        }
+
+        const passwordHash = await bcrypt.hash(password, 10);
+
+        const user = await User.create({
+            id: Date.now().toString(),
+            name: name.trim(),
+            email: cleanEmail,
+            passwordHash
+        });
+
+        req.session.userId = user.id;
+
+req.session.save((error) => {
+    if (error) {
+        console.error("Session save error:", error);
+
+        return res.status(500).json({
+            message: "Could not create login session"
+        });
     }
-
-    if (password.length < 6) {
-        return res.status(400).json({ message: "Password must be at least 6 characters" });
-    }
-
-    const users = read(usersFile);
-    const exists = users.find(user => user.email.toLowerCase() === email.toLowerCase());
-
-    if (exists) {
-        return res.status(400).json({ message: "Email already registered" });
-    }
-
-    const passwordHash = await bcrypt.hash(password, 10);
-
-    const user = {
-        id: Date.now().toString(),
-        name: name.trim(),
-        email: email.toLowerCase().trim(),
-        passwordHash
-    };
-
-    users.push(user);
-    write(usersFile, users);
-
-    req.session.userId = user.id;
 
     res.json({
         id: user.id,
@@ -165,152 +139,287 @@ app.post("/api/signup", async (req, res) => {
     });
 });
 
+    } catch (error) {
+        console.error(error);
+
+        res.status(500).json({
+            message: "Could not create account"
+        });
+    }
+});
+
+
+// SIGN IN
 app.post("/api/signin", async (req, res) => {
-    const { email, password } = req.body;
+    try {
+        const { email, password } = req.body;
 
-    const users = read(usersFile);
-    const user = users.find(item => item.email === email.toLowerCase().trim());
+        const user = await User.findOne({
+            email: email.toLowerCase().trim()
+        });
 
-    if (!user) {
-        return res.status(401).json({ message: "Invalid email or password" });
+        if (!user) {
+            return res.status(401).json({
+                message: "Invalid email or password"
+            });
+        }
+
+        const valid = await bcrypt.compare(
+            password,
+            user.passwordHash
+        );
+
+        if (!valid) {
+            return res.status(401).json({
+                message: "Invalid email or password"
+            });
+        }
+
+        req.session.userId = user.id;
+
+        // Make sure the session is saved before responding
+        req.session.save((error) => {
+            if (error) {
+                console.error("Session save error:", error);
+
+                return res.status(500).json({
+                    message: "Could not create login session"
+                });
+            }
+
+            res.json({
+                id: user.id,
+                name: user.name,
+                email: user.email
+            });
+        });
+
+    } catch (error) {
+        console.error(error);
+
+        res.status(500).json({
+            message: "Could not sign in"
+        });
     }
-
-    const valid = await bcrypt.compare(password, user.passwordHash);
-
-    if (!valid) {
-        return res.status(401).json({ message: "Invalid email or password" });
-    }
-
-    req.session.userId = user.id;
-
-    res.json({
-        id: user.id,
-        name: user.name,
-        email: user.email
-    });
 });
 
+// LOGOUT
 app.post("/api/logout", auth, (req, res) => {
     req.session.destroy(() => {
-        res.json({ message: "Logged out" });
+        res.json({
+            message: "Logged out"
+        });
     });
 });
 
-app.get("/api/me", (req, res) => {
-    if (!req.session.userId) {
-        return res.status(401).json({ message: "Not signed in" });
-    }
 
-    const users = read(usersFile);
-    const user = users.find(item => item.id === req.session.userId);
-
-    if (!user) {
-        return res.status(401).json({ message: "User not found" });
-    }
-
-    res.json({
-        id: user.id,
-        name: user.name,
-        email: user.email
-    });
-});
-
-app.get("/api/tasks", auth, (req, res) => {
-    const tasks = read(tasksFile)
-        .filter(task => task.userId === req.session.userId)
-        .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
-
-    res.json({
-        tasks,
-        streak: getStreak(tasks),
-        today: dateKey()
-    });
-});
-
-app.post("/api/tasks", auth, (req, res) => {
-    const { title, dueDate, repeat } = req.body;
-
-    if (!title || !dueDate) {
-        return res.status(400).json({ message: "Task and due date are required" });
-    }
-
-    const tasks = read(tasksFile);
-
-    const task = {
-        id: Date.now().toString(),
-        userId: req.session.userId,
-        title: title.trim(),
-        startDate: dueDate,
-        dueDate,
-        repeat: repeat || "none",
-        completions: []
-    };
-
-    tasks.push(task);
-    write(tasksFile, tasks);
-
-    res.status(201).json(task);
-});
-
-app.put("/api/tasks/:id/toggle", auth, (req, res) => {
-    const tasks = read(tasksFile);
-    const task = tasks.find(
-        item => item.id === req.params.id && item.userId === req.session.userId
-    );
-
-    if (!task) {
-        return res.status(404).json({ message: "Task not found" });
-    }
-
-    const today = dateKey();
-    const index = task.completions.indexOf(task.dueDate);
-
-    if (task.repeat === "none") {
-        if (task.completions.includes(task.dueDate)) {
-            task.completions = task.completions.filter(date => date !== task.dueDate);
-        } else {
-            task.completions.push(task.dueDate);
+// CURRENT USER
+app.get("/api/me", async (req, res) => {
+    try {
+        if (!req.session.userId) {
+            return res.status(401).json({
+                message: "Not signed in"
+            });
         }
-    } else {
-        if (task.completions.includes(task.dueDate)) {
-            task.completions = task.completions.filter(date => date !== task.dueDate);
-        } else {
-            task.completions.push(task.dueDate);
-            task.dueDate = nextDate(task.dueDate, task.repeat);
+
+        const user = await User.findOne({
+            id: req.session.userId
+        });
+
+        if (!user) {
+            return res.status(401).json({
+                message: "User not found"
+            });
         }
+
+        res.json({
+            id: user.id,
+            name: user.name,
+            email: user.email
+        });
+
+    } catch (error) {
+        console.error(error);
+
+        res.status(500).json({
+            message: "Could not load user"
+        });
     }
-
-    write(tasksFile, tasks);
-
-    const userTasks = tasks.filter(item => item.userId === req.session.userId);
-
-    res.json({
-        task,
-        streak: getStreak(userTasks),
-        today
-    });
 });
 
-app.delete("/api/tasks/:id", auth, (req, res) => {
-    let tasks = read(tasksFile);
 
-    const exists = tasks.some(
-        item => item.id === req.params.id && item.userId === req.session.userId
-    );
+// GET TASKS
+app.get("/api/tasks", auth, async (req, res) => {
+    try {
+        const tasks = await Task.find({
+            userId: req.session.userId
+        }).sort({
+            dueDate: 1
+        });
 
-    if (!exists) {
-        return res.status(404).json({ message: "Task not found" });
+        const taskObjects = tasks.map(task =>
+            task.toObject()
+        );
+
+        res.json({
+            tasks: taskObjects,
+            streak: getStreak(taskObjects),
+            today: dateKey()
+        });
+
+    } catch (error) {
+        console.error(error);
+
+        res.status(500).json({
+            message: "Could not load tasks"
+        });
     }
-
-    tasks = tasks.filter(
-        item => !(item.id === req.params.id && item.userId === req.session.userId)
-    );
-
-    write(tasksFile, tasks);
-
-    res.json({ message: "Task deleted" });
 });
 
+
+// CREATE TASK
+app.post("/api/tasks", auth, async (req, res) => {
+    try {
+        const { title, dueDate, repeat } = req.body;
+
+        if (!title || !dueDate) {
+            return res.status(400).json({
+                message: "Task and due date are required"
+            });
+        }
+
+        const task = await Task.create({
+            id: Date.now().toString(),
+            userId: req.session.userId,
+            title: title.trim(),
+            startDate: dueDate,
+            dueDate,
+            repeat: repeat || "none",
+            completions: []
+        });
+
+        res.status(201).json(task.toObject());
+
+    } catch (error) {
+        console.error(error);
+
+        res.status(500).json({
+            message: "Could not create task"
+        });
+    }
+});
+
+
+// TOGGLE TASK
+app.put("/api/tasks/:id/toggle", auth, async (req, res) => {
+    try {
+        const task = await Task.findOne({
+            id: req.params.id,
+            userId: req.session.userId
+        });
+
+        if (!task) {
+            return res.status(404).json({
+                message: "Task not found"
+            });
+        }
+
+        const today = dateKey();
+
+        if (task.repeat === "none") {
+
+            if (task.completions.includes(task.dueDate)) {
+                task.completions =
+                    task.completions.filter(
+                        date => date !== task.dueDate
+                    );
+            } else {
+                task.completions.push(task.dueDate);
+            }
+
+        } else {
+
+            if (task.completions.includes(task.dueDate)) {
+
+                task.completions =
+                    task.completions.filter(
+                        date => date !== task.dueDate
+                    );
+
+            } else {
+
+                task.completions.push(task.dueDate);
+
+                task.dueDate =
+                    nextDate(
+                        task.dueDate,
+                        task.repeat
+                    );
+            }
+        }
+
+        await task.save();
+
+        const userTasks = await Task.find({
+            userId: req.session.userId
+        });
+
+        const taskObjects = userTasks.map(
+            item => item.toObject()
+        );
+
+        res.json({
+            task: task.toObject(),
+            streak: getStreak(taskObjects),
+            today
+        });
+
+    } catch (error) {
+        console.error(error);
+
+        res.status(500).json({
+            message: "Could not update task"
+        });
+    }
+});
+
+
+// DELETE TASK
+app.delete("/api/tasks/:id", auth, async (req, res) => {
+    try {
+        const task = await Task.findOne({
+            id: req.params.id,
+            userId: req.session.userId
+        });
+
+        if (!task) {
+            return res.status(404).json({
+                message: "Task not found"
+            });
+        }
+
+        await Task.deleteOne({
+            id: req.params.id,
+            userId: req.session.userId
+        });
+
+        res.json({
+            message: "Task deleted"
+        });
+
+    } catch (error) {
+        console.error(error);
+
+        res.status(500).json({
+            message: "Could not delete task"
+        });
+    }
+});
+
+
+// Start server
 app.listen(PORT, () => {
-    console.log(`Todo app running at http://localhost:${PORT}`);
+    console.log(
+        `FocusFlow running at http://localhost:${PORT}`
+    );
 });

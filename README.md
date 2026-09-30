@@ -1,12 +1,13 @@
 # FocusFlow
 
-A student-built Todo List web application using Node.js, Express and Tailwind CSS.
+A student-built Todo List web application using Node.js, Express, MongoDB and Mongoose.
 
 ## Features
 
 - Sign up
 - Sign in
 - Logout
+- Session-based authentication
 - Add tasks
 - Tick / untick tasks
 - Delete tasks
@@ -16,14 +17,49 @@ A student-built Todo List web application using Node.js, Express and Tailwind CS
 - Every 2 weeks
 - Monthly repetition
 - Daily completion streak
+- Persistent task and user data using MongoDB
+- Mongoose schemas and models for users and tasks
+- MongoDB-backed user sessions
 
-## Run
+## Tech Stack
 
-```bash
-npm install
-npm run dev
-```
+### Frontend
+- HTML
+- CSS
+- JavaScript
 
-Open:
+### Backend
+- Node.js
+- Express.js
+- Express Session
+- bcryptjs
 
-http://localhost:3000
+### Database
+- MongoDB
+- Mongoose
+- connect-mongo
+
+## Project Structure
+
+```text
+FocusFlow/
+│
+├── models/
+│   ├── User.js
+│   └── Task.js
+│
+├── utils/
+│   └── taskUtils.js
+│
+├── public/
+│   ├── index.html
+│   ├── style.css
+│   └── app.js
+│
+├── .env
+├── .env.example
+├── .gitignore
+├── package.json
+├── package-lock.json
+├── README.md
+└── server.js
